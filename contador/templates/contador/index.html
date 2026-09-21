@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Contador de Reportes - INVIALCA</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #eef2f6;
+      margin: 0;
+      padding: 20px;
+    }
+    .container {
+      max-width: 1000px;
+      margin: auto;
+      background: #fff;
+      border-radius: 12px;
+      padding: 24px 28px;
+      box-shadow: 0 4px 12px rgba(0,0,0,.08);
+    }
+    h1 {
+      color: #1e3a8a;
+      margin-top: 0;
+      font-size: 22px;
+    }
+    .info {
+      color: #64748b;
+      font-size: 14px;
+      margin-bottom: 16px;
+    }
+    textarea {
+      width: 100%;
+      height: 340px;
+      padding: 12px;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 13px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      resize: vertical;
+      background: #f8fafc;
+      line-height: 1.5;
+    }
+    textarea:focus {
+      outline: none;
+      border-color: #2563eb;
+      background: #fff;
+    }
+    .acciones {
+      margin-top: 16px;
+      display: flex;
+      gap: 10px;
+    }
+    button {
+      padding: 10px 22px;
+      border: none;
+      border-radius: 6px;
+      font-size: 15px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: background .15s;
+    }
+    .btn-procesar {
+      background: #2563eb;
+      color: #fff;
+    }
+    .btn-procesar:hover { background: #1d4ed8; }
+    .btn-procesar:disabled {
+      background: #94a3b8;
+      cursor: not-allowed;
+    }
+    .btn-limpiar {
+      background: #e2e8f0;
+      color: #334155;
+    }
+    .btn-limpiar:hover { background: #cbd5e1; }
+
+    /* ============ MODAL ============ */
+    .modal-bg {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.75);
+      align-items: center;
+      justify-content: center;
+      z-index: 999;
+      padding: 20px;
+    }
+    .modal-bg.active { display: flex; }
+
+    .modal {
+      background: #fff;
+      border-radius: 10px;
+      max-width: 780px;
+      width: 100%;
+      max-height: 90vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 20px 50px rgba(0,0,0,.35);
+    }
+    .modal-body {
+      padding: 24px 28px;
+      overflow-y: auto;
+      flex: 1;
+    }
+    .modal-body pre {
+      margin: 0;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 14px;
+      line-height: 1.7;
+      color: #1e293b;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+    .modal-footer {
+      padding: 14px 24px;
+      border-top: 1px solid #e2e8f0;
+      background: #f8fafc;
+      border-radius: 0 0 10px 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+    .modal-footer .estado {
+      font-size: 13px;
+      color: #16a34a;
+      font-weight: 600;
+    }
+    .acciones-modal {
+      display: flex;
+      gap: 10px;
+    }
+    .btn-cerrar {
+      background: #ef4444;
+      color: #fff;
+    }
+    .btn-cerrar:hover { background: #dc2626; }
+    .btn-copiar {
+      background: #10b981;
+      color: #fff;
+    }
+    .btn-copiar:hover { background: #059669; }
+
+    .error {
+      background: #fee2e2;
+      color: #991b1b;
+      padding: 10px 14px;
+      border-radius: 6px;
+      margin-top: 12px;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  {% csrf_token %}
+  <h1>📊 Contador de Reportes Estadísticos</h1>
+  <p class="info">Pega el reporte en el área de texto y presiona <b>Procesar</b>.</p>
+
+  <textarea id="texto" placeholder="Pega aquí el reporte completo..."></textarea>
+
+  <div class="acciones">
+    <button class="btn-procesar" id="btnProcesar" onclick="procesar()">Procesar</button>
+    <button class="btn-limpiar" onclick="limpiar()">Limpiar</button>
+  </div>
+
+  <div id="errorBox"></div>
+</div>
+
+<!-- ============ MODAL ============ -->
+<div class="modal-bg" id="modalBg">
+  <div class="modal">
+    <div class="modal-body">
+      <pre id="contenido"></pre>
+    </div>
+    <div class="modal-footer">
+      <span class="estado" id="estadoCopiado"></span>
+      <div class="acciones-modal">
+        <button class="btn-copiar" onclick="copiar()">📋 Copiar todo</button>
+        <button class="btn-cerrar" onclick="cerrarModal()">✕ Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function formatearFecha(fecha) {
+  // Devuelve "DD/MM/YYYY"
+  const d = String(fecha.getDate()).padStart(2, "0");
+  const m = String(fecha.getMonth() + 1).padStart(2, "0");
+  const y = fecha.getFullYear();
+  return `${d}/${m}/${y}`;
+}
+
+function generarEncabezado() {
+  const hoy = new Date();
+  const ayer = new Date();
+  ayer.setDate(hoy.getDate() - 1);
+
+  const fechaHoy = formatearFecha(hoy);
+  const fechaAyer = formatearFecha(ayer);
+
+  return `*INSTITUTO AUTÓNOMO PARA LA ADMINISTRACIÓN,  MANTENIMIENTO Y CONSERVACIÓN DE LA VIALIDAD "CARABOBO TE QUIERO"*          
+                *(INVIALCA)*         
+                
+*DIRECCIÓN DE OPERACIONES VIALES*
+
+*Guardia 24 horas*
+
+*ACTIVIDADES REALIZADAS 24 HORAS*
+
+*INICIO:* ${fechaAyer}
+*CIERRE* ${fechaHoy}`;
+}
+
+async function procesar() {
+  const texto = document.getElementById("texto").value;
+  const errorBox = document.getElementById("errorBox");
+  errorBox.innerHTML = "";
+
+  if (!texto.trim()) {
+    errorBox.innerHTML = '<div class="error">El texto está vacío.</div>';
+    return;
+  }
+
+  const btn = document.getElementById("btnProcesar");
+  btn.disabled = true;
+  btn.textContent = "Procesando...";
+
+  try {
+    const r = await fetch("/procesar/", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRFToken": getCookie("csrftoken"),
+      },
+      body: JSON.stringify({ texto }),
+    });
+    const data = await r.json();
+
+    if (!data.ok) {
+      errorBox.innerHTML = `<div class="error">${data.error || "Error al procesar"}</div>`;
+      return;
+    }
+
+    mostrarModal(data);
+  } catch (e) {
+    errorBox.innerHTML = `<div class="error">Error de red: ${e.message}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Procesar";
+  }
+}
+
+function mostrarModal(data) {
+  const bloques = data.bloques || [];
+  let html = "";
+
+  for (const bloque of bloques) {
+    for (const [nombre, valor] of bloque.items) {
+      html += `${nombre} ${valor}\n`;
+    }
+    if (bloque.titulo) {
+      html += `${bloque.titulo} (${bloque.subtotal})\n`;
+    }
+    html += "\n";
+  }
+
+  contenidoActual = html.trimEnd();
+
+  // Encabezado dinámico con fechas
+  const encabezado = generarEncabezado();
+  const contenidoCompleto = encabezado + "\n\n" + contenidoActual;
+  document.getElementById("contenido").textContent = contenidoCompleto;
+  document.getElementById("estadoCopiado").textContent = "";
+  document.getElementById("modalBg").classList.add("active");
+}
+
+function cerrarModal() {
+  document.getElementById("modalBg").classList.remove("active");
+}
+
+function limpiar() {
+  document.getElementById("texto").value = "";
+  document.getElementById("errorBox").innerHTML = "";
+}
+
+function copiar() {
+  const encabezado = generarEncabezado();
+  const todo = encabezado + "\n\n" + contenidoActual;
+  navigator.clipboard.writeText(todo).then(() => {
+    const estado = document.getElementById("estadoCopiado");
+    estado.textContent = "✅ Copiado al portapapeles";
+    setTimeout(() => { estado.textContent = ""; }, 2000);
+  }).catch(err => {
+    alert("No se pudo copiar: " + err.message);
+  });
+}
+
+function getCookie(name) {
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) return parts.pop().split(";").shift();
+  return "";
+}
+</script>
+</body>
+</html>
